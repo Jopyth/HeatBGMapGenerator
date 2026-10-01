@@ -762,6 +762,10 @@
                             <span>⚪</span>
                             Lines
                         </button>
+                        <button class="btn" id="finishMode">
+                            <span>🏳️</span>
+                            Finish
+                        </button>
                     </div>
                     
                     <div class="curve-controls" id="curveControls" style="display: none;">
@@ -776,6 +780,20 @@
                     <div class="curve-controls" id="whiteLineControls" style="display: none;">
                         <p><strong>White Lines</strong><br>
                         Add white lines to track borders (grouped by target curve). Click on track borders to add/remove/switch white lines.</p>
+                    </div>
+                    
+                    <div class="curve-controls" id="finishControls" style="display: none;">
+                        <p><strong>Start / Finish Line</strong><br>
+                        Click a segment line to put the finish line there; click it again to flip the direction of travel. Corner lines cannot hold it.</p>
+                        <p id="finishLineStatus">No finish line placed</p>
+                        <button class="btn secondary" id="flipFinishLine" style="margin-top: 12px;">
+                            <span>🔄</span>
+                            Flip Direction
+                        </button>
+                        <button class="btn secondary" id="clearFinishLine" style="margin-top: 12px;">
+                            <span>🗑️</span>
+                            Clear
+                        </button>
                     </div>
                     
                     <div class="curve-controls" id="editControls" style="display: none;">

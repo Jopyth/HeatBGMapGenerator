@@ -79,6 +79,9 @@ class HeatTrackGenerator {
         document.getElementById('curveMode').addEventListener('click', () => this.setMode('curve'));
         document.getElementById('kerbMode').addEventListener('click', () => this.setMode('kerb'));
         document.getElementById('whiteLineMode').addEventListener('click', () => this.setMode('whiteLine'));
+        document.getElementById('finishMode').addEventListener('click', () => this.setMode('finish'));
+        document.getElementById('flipFinishLine').addEventListener('click', () => this.flipFinishLine());
+        document.getElementById('clearFinishLine').addEventListener('click', () => this.clearFinishLine());
 
         // Export buttons
         document.getElementById('exportPNG').addEventListener('click', () => this.exportTrack('png'));
@@ -690,6 +693,8 @@ class HeatTrackGenerator {
         this.renderSegmentDivisions(trackGroup);
         this.renderKerbs(trackGroup);
         this.renderWhiteLines(trackGroup);
+        this.renderFinishLine(trackGroup);
+        this.updateFinishControls();
 
         svg.appendChild(trackGroup);
     }
@@ -1175,7 +1180,7 @@ class HeatTrackGenerator {
         const totalLength = distances[distances.length - 1];
         
         // Handle wrap-around for closed tracks
-        const normalizedDistance = targetDistance % totalLength;
+        const normalizedDistance = ((targetDistance % totalLength) + totalLength) % totalLength;
         
         // Find the segment containing this distance
         for (let i = 0; i < distances.length - 1; i++) {
@@ -1510,7 +1515,8 @@ class HeatTrackGenerator {
             case 'edit': return 'move';
             case 'curve':
             case 'kerb':
-            case 'whiteLine': return 'pointer';
+            case 'whiteLine':
+            case 'finish': return 'pointer';
             case 'pan': return 'grab';
             default: return 'crosshair';
         }
@@ -1592,6 +1598,7 @@ class HeatTrackGenerator {
         document.getElementById('curveControls').style.display = mode === 'curve' ? 'block' : 'none';
         document.getElementById('kerbControls').style.display = mode === 'kerb' ? 'block' : 'none';
         document.getElementById('whiteLineControls').style.display = mode === 'whiteLine' ? 'block' : 'none';
+        document.getElementById('finishControls').style.display = mode === 'finish' ? 'block' : 'none';
         document.getElementById('editControls').style.display = mode === 'edit' ? 'block' : 'none';
         
         // Update cursors and pointer events
@@ -1674,6 +1681,11 @@ class HeatTrackGenerator {
         } else if (this.currentMode === 'whiteLine') {
             if (element.classList.contains('white-line-hit-area')) {
                 this.handleWhiteLineAreaSelection(element);
+                handledByMode = true;
+            }
+        } else if (this.currentMode === 'finish') {
+            if (element.classList.contains('segment-line')) {
+                this.handleFinishLineSelection(element);
                 handledByMode = true;
             }
         } else if (this.currentMode === 'edit') {
@@ -2451,6 +2463,128 @@ class HeatTrackGenerator {
         });
     }
 
+    handleFinishLineSelection(element) {
+        const segmentId = parseInt(element.getAttribute('data-segment-id'));
+        const segment = this.trackData.segments.find(s => s.segment_number === segmentId);
+        if (!segment) return;
+        if (segment.is_curve) {
+            this.showStatus(`Segment ${segmentId}'s line is a corner line - the finish line cannot go there`, 'error');
+            return;
+        }
+        const finish = this.trackData.finish_line;
+        if (finish && finish.segment_number === segmentId) {
+            finish.reverse = !finish.reverse;
+        } else {
+            this.trackData.finish_line = { segment_number: segmentId, reverse: false };
+        }
+        this.onFinishLineChanged();
+    }
+
+    flipFinishLine() {
+        if (!this.trackData || !this.trackData.finish_line) {
+            this.showStatus('No finish line to flip - click a segment line first', 'warning');
+            return;
+        }
+        this.trackData.finish_line.reverse = !this.trackData.finish_line.reverse;
+        this.onFinishLineChanged();
+    }
+
+    clearFinishLine() {
+        if (!this.trackData) return;
+        this.trackData.finish_line = null;
+        this.onFinishLineChanged();
+    }
+
+    onFinishLineChanged() {
+        this.renderTrack(true); // Preserve view
+        this.saveSession();
+        this.showStatus(this.describeFinishLine(), 'success');
+    }
+
+    describeFinishLine() {
+        const finish = this.trackData && this.trackData.finish_line;
+        if (!finish) return 'No finish line placed';
+        const direction = finish.reverse ? 'reverse (decreasing numbers)' : 'forward (increasing numbers)';
+        return `Finish line on segment ${finish.segment_number}'s line, ${direction}`;
+    }
+
+    updateFinishControls() {
+        const status = document.getElementById('finishLineStatus');
+        if (status) status.textContent = this.describeFinishLine();
+    }
+
+    renderFinishLine(group) {
+        const finish = this.trackData.finish_line;
+        if (!finish) return;
+        const segment = this.trackData.segments.find(s => s.segment_number === finish.segment_number);
+        if (!segment) return;
+
+        const SQUARES = 8;
+        const svgNS = 'http://www.w3.org/2000/svg';
+        const halfWidth = this.trackData.track_width / 2;
+        const square = this.trackData.track_width / SQUARES;
+        // One row of squares either side of the line; each edge follows the centerline.
+        const edges = [-1, 0, 1].map(j => this.findPointAndDirectionAtDistance(segment.distance + j * square));
+        if (edges.some(edge => !edge)) return;
+        const across = (edge, offset) => [
+            edge.point[0] - edge.direction[1] * offset,
+            edge.point[1] + edge.direction[0] * offset,
+        ];
+
+        const band = document.createElementNS(svgNS, 'g');
+        band.setAttribute('class', 'finish-line');
+        band.style.pointerEvents = 'none';
+        for (let row = 0; row < 2; row++) {
+            for (let col = 0; col < SQUARES; col++) {
+                const a = -halfWidth + col * square;
+                const b = a + square;
+                const corners = [
+                    across(edges[row], a), across(edges[row], b),
+                    across(edges[row + 1], b), across(edges[row + 1], a),
+                ];
+                const path = document.createElementNS(svgNS, 'path');
+                path.setAttribute('d', this.closedPathData(corners));
+                path.setAttribute('fill', (row + col) % 2 === 0 ? '#000' : '#fff');
+                band.appendChild(path);
+            }
+        }
+        group.appendChild(band);
+
+        if (this.currentMode === 'finish') {
+            group.appendChild(this.createFinishDirectionArrow(edges[1], finish.reverse, square));
+        }
+    }
+
+    createFinishDirectionArrow(lineCenter, reverse, square) {
+        const sign = reverse ? -1 : 1;
+        const [dx, dy] = [lineCenter.direction[0] * sign, lineCenter.direction[1] * sign];
+        const [px, py] = [-dy, dx];
+        const length = this.trackData.track_width * 0.6;
+        const head = square * 1.5;
+        const start = square * 1.5; // clear of the band
+        const at = (along, side) => [
+            lineCenter.point[0] + dx * along + px * side,
+            lineCenter.point[1] + dy * along + py * side,
+        ];
+        const points = [
+            at(start, -square / 3), at(start + length - head, -square / 3),
+            at(start + length - head, -head / 1.5), at(start + length, 0),
+            at(start + length - head, head / 1.5), at(start + length - head, square / 3),
+            at(start, square / 3),
+        ];
+        const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        arrow.setAttribute('d', this.closedPathData(points));
+        arrow.setAttribute('fill', '#ffff00');
+        arrow.setAttribute('class', 'finish-direction-arrow');
+        arrow.style.pointerEvents = 'none';
+        return arrow;
+    }
+
+    closedPathData(points) {
+        // `d` for a closed polygon. (createPathFromPoints returns a <path> element, not a string.)
+        return points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point[0]} ${point[1]}`).join(' ') + ' Z';
+    }
+
     groupContiguousWhiteLineSegments(whiteLineSegments) {
         if (whiteLineSegments.length === 0) return [];
         
@@ -2694,37 +2828,30 @@ class HeatTrackGenerator {
         }
     }
 
-    exportSVG(svg) {
-        // Create a clean copy of the SVG without background styling
+    cloneSVGForExport(svg) {
+        // A clean copy of the SVG: no background styling, grid, or editor-only overlays
         const svgClone = svg.cloneNode(true);
-        
-        // Remove background styles that would add background color
         svgClone.style.background = 'none';
         svgClone.style.backgroundColor = 'transparent';
-        
-        // Ensure the SVG itself doesn't have a background fill
         svgClone.removeAttribute('style');
-        
-        // Remove the grid pattern and background rect
+
         const defs = svgClone.querySelector('defs');
         if (defs) {
             defs.remove();
         }
-        
-        // Remove the background rect that uses the grid pattern
-        const backgroundRect = svgClone.querySelector('rect[fill*="grid"]');
-        if (backgroundRect) {
-            backgroundRect.remove();
-        }
-        
-        // Remove any other background rects that might have solid fills
-        const allRects = svgClone.querySelectorAll('rect');
-        allRects.forEach(rect => {
+        svgClone.querySelectorAll('rect').forEach(rect => {
             const fill = rect.getAttribute('fill');
             if (fill && (fill.includes('url(#grid)') || fill === '#1a1a1a' || fill === '#555')) {
                 rect.remove();
             }
         });
+        svgClone.querySelectorAll('.finish-direction-arrow').forEach(arrow => arrow.remove());
+        return svgClone;
+    }
+
+    exportSVG(svg) {
+        // Create a clean copy of the SVG without background styling
+        const svgClone = this.cloneSVGForExport(svg);
         
         const svgData = new XMLSerializer().serializeToString(svgClone);
         const blob = new Blob([svgData], { type: 'image/svg+xml' });
@@ -2747,31 +2874,7 @@ class HeatTrackGenerator {
         canvas.height = 1600;
         
         // Create a clean copy of the SVG without background styling
-        const svgClone = svg.cloneNode(true);
-        svgClone.style.background = 'none';
-        svgClone.style.backgroundColor = 'transparent';
-        svgClone.removeAttribute('style');
-        
-        // Remove the grid pattern and background rect
-        const defs = svgClone.querySelector('defs');
-        if (defs) {
-            defs.remove();
-        }
-        
-        // Remove the background rect that uses the grid pattern
-        const backgroundRect = svgClone.querySelector('rect[fill*="grid"]');
-        if (backgroundRect) {
-            backgroundRect.remove();
-        }
-        
-        // Remove any other background rects that might have solid fills
-        const allRects = svgClone.querySelectorAll('rect');
-        allRects.forEach(rect => {
-            const fill = rect.getAttribute('fill');
-            if (fill && (fill.includes('url(#grid)') || fill === '#1a1a1a' || fill === '#555')) {
-                rect.remove();
-            }
-        });
+        const svgClone = this.cloneSVGForExport(svg);
         
         const svgData = new XMLSerializer().serializeToString(svgClone);
         const img = new Image();
