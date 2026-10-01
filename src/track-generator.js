@@ -1180,7 +1180,8 @@ class HeatTrackGenerator {
         const totalLength = distances[distances.length - 1];
         
         // Handle wrap-around for closed tracks
-        const normalizedDistance = ((targetDistance % totalLength) + totalLength) % totalLength;
+        let normalizedDistance = targetDistance % totalLength;
+        if (normalizedDistance < 0) normalizedDistance += totalLength;
         
         // Find the segment containing this distance
         for (let i = 0; i < distances.length - 1; i++) {
