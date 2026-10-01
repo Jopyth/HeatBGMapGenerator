@@ -1442,15 +1442,26 @@ class HeatTrackGenerator {
         // Scales with the number it carries: 60 at the default number size of 38
         const signSize = this.visualSettings.segmentNumberSize * 60 / 38;
         
-        // Create the distance sign image
-        const signImage = document.createElementNS('http://www.w3.org/2000/svg', 'image');
-    signImage.setAttribute('href', this.imageCache['assets/distance_sign.png'] || 'assets/distance_sign.png');
-        signImage.setAttribute('x', -signSize / 2);
-        signImage.setAttribute('y', -signSize / 2);
-        signImage.setAttribute('width', signSize);
-        signImage.setAttribute('height', signSize);
-        signImage.setAttribute('class', 'distance-sign-image');
-        signGroup.appendChild(signImage);
+        // Draw the sign as vector shapes, traced from assets/distance_sign.png (1080 units
+        // across). The bitmap, shrunk to a few dozen pixels, aliased its thin outlines into
+        // dotted, rotation-dependent borders in the PNG export.
+        const scale = signSize / 1080;
+        const svgNS = 'http://www.w3.org/2000/svg';
+        const addShape = (tag, attrs) => {
+            const shape = document.createElementNS(svgNS, tag);
+            for (const [name, value] of Object.entries(attrs)) shape.setAttribute(name, value);
+            shape.setAttribute('class', 'distance-sign-image');
+            signGroup.appendChild(shape);
+        };
+        const roundedDiamond = (half, radius, attrs) => addShape('rect', {
+            x: -half, y: -half, width: 2 * half, height: 2 * half, rx: radius,
+            transform: `scale(${scale}) rotate(45)`, ...attrs,
+        });
+        roundedDiamond(407.5, 102, { fill: '#f7951d', stroke: '#000000', 'stroke-width': 12 });
+        roundedDiamond(366, 60, { fill: 'none', stroke: '#000000', 'stroke-width': 22 });
+        for (const cy of [-424, 424]) {
+            addShape('circle', { cx: 0, cy, r: 21, fill: '#000000', transform: `scale(${scale})` });
+        }
         
         // Create the number text on top of the image
         const numberText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
