@@ -177,6 +177,7 @@ class HeatTrackGenerator {
         svg.addEventListener('mousemove', this.handleMouseMove.bind(this));
         svg.addEventListener('mouseup', this.handleMouseUp.bind(this));
         svg.addEventListener('wheel', this.handleWheel.bind(this));
+        svg.addEventListener('contextmenu', this.handleContextMenu.bind(this));
     }
 
     handleDragOver(e) {
@@ -694,6 +695,7 @@ class HeatTrackGenerator {
         this.renderKerbs(trackGroup);
         this.renderWhiteLines(trackGroup);
         this.renderFinishLine(trackGroup);
+        this.renderChicaneEndMarkers(trackGroup);
         this.updateFinishControls();
 
         svg.appendChild(trackGroup);
@@ -1653,6 +1655,10 @@ class HeatTrackGenerator {
     }
 
     handleMouseDown(e) {
+        // A right click (or a Mac's ctrl-click) is a chicane toggle (see handleContextMenu),
+        // never a curve toggle or a pan
+        if (e.button === 2 || e.ctrlKey) return;
+
         const svg = document.getElementById('trackCanvas');
         const rect = svg.getBoundingClientRect();
         const x = e.clientX - rect.left;
@@ -1789,6 +1795,33 @@ class HeatTrackGenerator {
         this.debouncedSaveSession();
     }
 
+    // Right click in curve mode: flag a curve as a chicane end -- the second of a chicane's
+    // two curves, which pairs with the curve before it.
+    handleContextMenu(e) {
+        if (this.currentMode !== 'curve' || !e.target.classList.contains('segment-line')) return;
+        e.preventDefault();
+        this.handleChicaneEndToggle(e.target);
+    }
+
+    handleChicaneEndToggle(element) {
+        const segmentId = parseInt(element.getAttribute('data-segment-id'));
+        const segment = this.trackData.segments.find(s => s.segment_number === segmentId);
+        if (!segment) return;
+        if (!segment.is_curve) {
+            this.showStatus(`Segment ${segmentId} is not a curve: left-click to mark it as one first`, 'warning');
+            return;
+        }
+
+        segment.chicane_end = !segment.chicane_end;
+        this.renderTrack(true); // preserve view; redraws the chicane end marker
+        this.saveSession();
+
+        this.showStatus(
+            `Curve ${segmentId} ${segment.chicane_end ? 'marked as' : 'no longer'} a chicane end`,
+            'success'
+        );
+    }
+
     handleCurveSelection(element) {
         const segmentId = parseInt(element.getAttribute('data-segment-id'));
         const segment = this.trackData.segments.find(s => s.segment_number === segmentId);
@@ -1805,6 +1838,8 @@ class HeatTrackGenerator {
                 segment.is_curve = false;
                 return;
             }
+        } else {
+            segment.chicane_end = false;
         }
         
         // Recalculate spaces to next curve for all segments since curve status changed
@@ -2556,6 +2591,51 @@ class HeatTrackGenerator {
         }
     }
 
+    // Editor-only: a dashed blue bar across each chicane end's line, labelled, so the flag
+    // can be seen while editing. Its `editor-only` class keeps it out of both exports.
+    renderChicaneEndMarkers(group) {
+        const svgNS = 'http://www.w3.org/2000/svg';
+        const reach = this.trackData.track_width * 0.75;
+        this.trackData.segments
+            .filter(segment => segment.is_curve && segment.chicane_end)
+            .forEach(segment => {
+                const line = this.findPointAndDirectionAtDistance(segment.distance);
+                if (!line) return;
+                const across = offset => [
+                    line.point[0] - line.direction[1] * offset,
+                    line.point[1] + line.direction[0] * offset,
+                ];
+                const marker = document.createElementNS(svgNS, 'g');
+                marker.setAttribute('class', 'chicane-end-marker editor-only');
+                marker.style.pointerEvents = 'none';
+
+                const [start, end] = [across(-reach), across(reach)];
+                const bar = document.createElementNS(svgNS, 'line');
+                bar.setAttribute('x1', start[0]);
+                bar.setAttribute('y1', start[1]);
+                bar.setAttribute('x2', end[0]);
+                bar.setAttribute('y2', end[1]);
+                bar.setAttribute('stroke', '#1e90ff');
+                bar.setAttribute('stroke-width', '10');
+                bar.setAttribute('stroke-dasharray', '14 8');
+                marker.appendChild(bar);
+
+                const labelAt = across(reach + 8);
+                const label = document.createElementNS(svgNS, 'text');
+                label.setAttribute('x', labelAt[0]);
+                label.setAttribute('y', labelAt[1]);
+                label.setAttribute('fill', '#1e90ff');
+                label.setAttribute('font-size', '14');
+                label.setAttribute('font-weight', 'bold');
+                label.setAttribute('text-anchor', 'middle');
+                label.setAttribute('dominant-baseline', 'middle');
+                label.textContent = 'chicane end';
+                marker.appendChild(label);
+
+                group.appendChild(marker);
+            });
+    }
+
     createFinishDirectionArrow(lineCenter, reverse, square) {
         const sign = reverse ? -1 : 1;
         const [dx, dy] = [lineCenter.direction[0] * sign, lineCenter.direction[1] * sign];
@@ -2846,7 +2926,7 @@ class HeatTrackGenerator {
                 rect.remove();
             }
         });
-        svgClone.querySelectorAll('.finish-direction-arrow').forEach(arrow => arrow.remove());
+        svgClone.querySelectorAll('.finish-direction-arrow, .editor-only').forEach(overlay => overlay.remove());
         return svgClone;
     }
 

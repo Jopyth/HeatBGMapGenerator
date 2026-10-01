@@ -6,6 +6,7 @@ HeatBGMapGenerator is a web-based tool for generating, editing, and exporting ra
 
 - **SVG Track Import**: Load SVG files to use as the base for your track map.
 - **Interactive Editing**: Pan, edit, curve, and add kerbs or white lines to your track interactively.
+- **Chicanes**: In Curves mode, right-click (or ctrl-click) the second curve of a chicane to mark it as a chicane end (saved as `chicane_end` on that segment). It pairs with the curve before it, and both must share a speed limit; the pair then gets one corner weather tent and one section tent after the chicane end.
 - **Visual Customization**: Adjust visual settings such as segment numbers, speed limits, track width, colors, and more.
 - **Export Options**: Export your track as PNG or SVG images for use in other applications or sharing.
 - **Session Management**: Save and load your work, including restoring previous sessions.
