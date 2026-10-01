@@ -19,7 +19,6 @@ class HeatTrackGenerator {
         this.defaultSettings = {
             segmentNumberSize: 38,
             segmentNumberOffset: 140, // Distance to offset numbers from centerline
-            distanceSignSize: 60, // Size of the distance sign image
             speedLimitSize: 64,
             speedLimitOffset: 230, // Distance to offset speed limits from centerline
             normalSegmentWidth: 8,
@@ -147,27 +146,11 @@ class HeatTrackGenerator {
         document.getElementById('clearDebugBtn').addEventListener('click', this.clearDebugPoints.bind(this));
     }
 
-    // Load images as base64 data URIs for SVG export compatibility
-    async loadImagesAsDataURI() {
-    const imagePaths = ['assets/speed_limit_sign.png', 'assets/distance_sign.png'];
-        
-        for (const imagePath of imagePaths) {
-            try {
-                const response = await fetch(imagePath);
-                const blob = await response.blob();
-                const reader = new FileReader();
-                
-                reader.onload = () => {
-                    this.imageCache[imagePath] = reader.result;
-                };
-                
-                reader.readAsDataURL(blob);
-            } catch (error) {
-                console.warn(`Failed to load image ${imagePath}:`, error);
-                // Fallback to original path if base64 loading fails
-                this.imageCache[imagePath] = imagePath;
-            }
-        }
+    // The sign images as data URIs, so both exports embed them. They come from
+    // src/sign-images.js rather than a fetch(): opened from disk (file://), the browser
+    // blocks fetching a local asset, and an exported SVG/PNG then drew no signs at all.
+    loadImagesAsDataURI() {
+        Object.assign(this.imageCache, window.SIGN_IMAGES || {});
     }
 
     setupSVGInteraction() {
@@ -1456,7 +1439,8 @@ class HeatTrackGenerator {
         signGroup.style.cursor = this.currentMode === 'edit' ? 'move' : (this.currentMode === 'curve' ? 'pointer' : 'default');
         
         // Calculate size based on visual settings
-        const signSize = this.visualSettings.distanceSignSize;
+        // Scales with the number it carries: 60 at the default number size of 38
+        const signSize = this.visualSettings.segmentNumberSize * 60 / 38;
         
         // Create the distance sign image
         const signImage = document.createElementNS('http://www.w3.org/2000/svg', 'image');

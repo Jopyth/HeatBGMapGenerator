@@ -19,6 +19,9 @@ HeatBGMapGenerator is a web-based tool for generating, editing, and exporting ra
 - `track-generator.js` — Core JavaScript logic for track editing and generation.
 - `tracks/` — Folder containing SVG templates for different tracks.
 - `*.png` — Image assets used in the UI and exports.
+- `src/sign-images.js` — The speed-limit and distance sign PNGs inlined as data URIs, so the
+  exports carry them even when `index.html` is opened from disk. Generated: after changing
+  `assets/speed_limit_sign.png` or `assets/distance_sign.png`, run `python3 embed_sign_images.py`.
 
 ## Getting Started
 
